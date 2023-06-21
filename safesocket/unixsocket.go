@@ -34,16 +34,24 @@ func listen(path string) (net.Listener, error) {
 	// "proper" daemon usually uses a dance involving pidfiles to first
 	// ensure that no other instances of itself are running, but that's
 	// beyond the scope of our simple socket library.
+	// 1. 尝试连接当前的 unix socket
 	c, err := net.Dial("unix", path)
+
+	// 2. 如果连接成功了，说明当前有活跃的连接
 	if err == nil {
+		// 关闭建立的连接，因为这个链接不是我们想要的
 		c.Close()
+		// 看看这个连接是不是我们 Tailscale 造成的，bing 返回相应的错误提示。
 		if tailscaledRunningUnderLaunchd() {
 			return nil, fmt.Errorf("%v: address already in use; tailscaled already running under launchd (to stop, run: $ sudo launchctl stop com.tailscale.tailscaled)", path)
 		}
 		return nil, fmt.Errorf("%v: address already in use", path)
 	}
+
+	// 3. 如果连接失败了，可能仍留在文件系统中，因此需要替换他
 	_ = os.Remove(path)
 
+	// 4.获取文件需要的权限
 	perm := socketPermissionsForOS()
 
 	sockDir := filepath.Dir(path)
@@ -64,6 +72,7 @@ func listen(path string) (net.Listener, error) {
 			}
 		}
 	}
+	// 侦听当前 socket
 	pipe, err := net.Listen("unix", path)
 	if err != nil {
 		return nil, err
